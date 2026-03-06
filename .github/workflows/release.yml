@@ -46,8 +46,9 @@ jobs:
           CGO_ENABLED: 1
         run: |
           EXT=""
-          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
-          go build -o ${{ matrix.name }}${EXT} .
+          LDFLAGS="-s -w"
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; LDFLAGS="$LDFLAGS -H windowsgui"; fi
+          go build -ldflags="$LDFLAGS" -o ${{ matrix.name }}${EXT} .
       - name: Package
         run: |
           EXT=""

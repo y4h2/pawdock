@@ -1,0 +1,7 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Cross-compile deskpet for Windows (amd64)
+    cmds:
+      - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui" -o deskpet.exe .

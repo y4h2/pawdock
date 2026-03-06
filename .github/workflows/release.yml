@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            name: pawdock-macos-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            name: pawdock-macos-arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            name: pawdock-windows-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            name: pawdock-linux-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Install Linux dependencies
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc6-dev libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev libasound2-dev
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+        run: |
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
+          go build -o ${{ matrix.name }}${EXT} .
+      - name: Package
+        run: |
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            7z a ${{ matrix.name }}.zip ${{ matrix.name }}${EXT}
+          else
+            tar czf ${{ matrix.name }}.tar.gz ${{ matrix.name }}${EXT}
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: pawdock-*
+          generate_release_notes: true
+      - name: Remove source code archives
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$TAG --jq '.id')
+          gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --jq '.[].id' | while read ASSET_ID; do
+            NAME=$(gh api repos/${{ github.repository }}/releases/assets/$ASSET_ID --jq '.name')
+            case "$NAME" in
+              *.tar.gz|*.zip)
+                if echo "$NAME" | grep -qv "^pawdock-"; then
+                  gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
+                fi
+                ;;
+            esac
+          done

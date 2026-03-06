@@ -1,0 +1,7 @@
+frames=73
+frame_size=480x640
+sheet_cell=256x256
+cols=9
+fps=12
+char_ratio=1.000
+scale_factor=0.850

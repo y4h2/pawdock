@@ -1,0 +1,6 @@
+frames: 73
+frame_width: 476
+frame_height: 566
+columns: 9
+rows: 9
+fps: 12

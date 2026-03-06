@@ -18,6 +18,7 @@
       font-family: 'Inter', sans-serif;
       color: #18181B;
       -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
     }
 
     .poster {
@@ -62,16 +63,22 @@
       max-width: 500px;
     }
 
-    /* Mascot */
-    .mascot {
-      width: 280px;
-      height: 280px;
-      margin: 16px 0;
+    /* Pet hint */
+    .pet-hint {
+      margin-top: 12px;
+      padding: 10px 24px;
+      border-radius: 16px;
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px dashed rgba(139, 92, 246, 0.3);
+      font-size: 14px;
+      color: #8B5CF6;
+      font-weight: 500;
+      text-align: center;
+      animation: fadeInHint 1s ease-out;
     }
-    .mascot img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
+    @keyframes fadeInHint {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     /* Features */
@@ -79,7 +86,7 @@
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 28px;
       font-weight: 700;
-      margin-top: 8px;
+      margin-top: 24px;
     }
 
     .features-grid {
@@ -224,16 +231,77 @@
     }
     .tech-badge svg { width: 14px; height: 14px; }
 
+    /* Free-roaming pet */
+    #pet-container {
+      position: fixed;
+      z-index: 9999;
+      pointer-events: none;
+      width: 128px;
+      height: 128px;
+    }
+    #pet-container.draggable { pointer-events: auto; cursor: grab; }
+    #pet-container.dragging { cursor: grabbing; }
+    #pet-canvas {
+      width: 128px;
+      height: 128px;
+      image-rendering: auto;
+    }
+
+    /* Speech bubble */
+    .speech-bubble {
+      position: absolute;
+      bottom: 110%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #FFFFFF;
+      border-radius: 12px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #52525B;
+      white-space: nowrap;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #FFFFFF;
+    }
+    .speech-bubble.visible { opacity: 1; }
+
+    /* State label */
+    .state-label {
+      position: absolute;
+      top: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      font-weight: 700;
+      color: #8B5CF6;
+      background: rgba(139, 92, 246, 0.1);
+      padding: 2px 10px;
+      border-radius: 8px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
     /* Responsive */
     @media (max-width: 600px) {
       .poster { padding: 40px 20px 40px; }
       .title { font-size: 48px; }
       .subtitle { font-size: 18px; }
-      .mascot { width: 200px; height: 200px; }
       .features-title { font-size: 22px; }
       .feature-card { width: 140px; padding: 16px; }
       .quote-section { padding: 0 20px; }
       .btn { padding: 12px 24px; font-size: 14px; }
+      #pet-container, #pet-canvas { width: 96px; height: 96px; }
     }
   </style>
 </head>
@@ -252,9 +320,8 @@
     <h1 class="title">Pawdock</h1>
     <p class="subtitle">A Cute Little Friend That Lives on Your Desktop</p>
 
-    <!-- Mascot -->
-    <div class="mascot">
-      <img src="idle.png" alt="Pawdock pet character">
+    <div class="pet-hint">
+      Move your mouse around — your pet will follow! Try clicking on it too.
     </div>
 
     <!-- Features -->
@@ -324,5 +391,306 @@
       </span>
     </div>
   </div>
+
+  <!-- Free-roaming pet -->
+  <div id="pet-container" class="draggable">
+    <div class="state-label" id="state-label">Idle</div>
+    <div class="speech-bubble" id="speech-bubble"></div>
+    <canvas id="pet-canvas" width="256" height="256"></canvas>
+  </div>
+
+  <script>
+    // === Sprite Sheet Config ===
+    const ANIMS = {
+      idle:  { src: 'sheets/idle_sheet.png',  frames: 121, cols: 9, loop: true },
+      walk:  { src: 'sheets/walk_sheet.png',  frames: 73,  cols: 9, loop: true },
+      happy: { src: 'sheets/happy_sheet.png', frames: 73,  cols: 9, loop: false },
+      play:  { src: 'sheets/play_sheet.png',  frames: 121, cols: 9, loop: false },
+      work:  { src: 'sheets/work_sheet.png',  frames: 145, cols: 9, loop: true },
+      peek:  { src: 'sheets/peek_sheet.png',  frames: 73,  cols: 9, loop: true },
+    };
+    const FW = 256, FH = 256;
+    const BLACK_THRESHOLD = 30;
+    const PET_SIZE = 128;
+    const SPEED = 2.5;
+    const FOLLOW_DIST = 120;
+    const TICKS_PER_FRAME = 3;
+
+    // Preload images
+    const images = {};
+    const loadPromises = [];
+    for (const [key, anim] of Object.entries(ANIMS)) {
+      const img = new Image();
+      img.src = anim.src;
+      images[key] = img;
+      loadPromises.push(new Promise(r => { img.onload = r; }));
+    }
+
+    // === Pet State Machine ===
+    const pet = {
+      x: window.innerWidth / 2 - PET_SIZE / 2,
+      y: window.innerHeight / 2 - PET_SIZE / 2,
+      state: 'idle',
+      frame: 0,
+      tickCount: 0,
+      flipX: false,
+      dragging: false,
+      dragOffsetX: 0,
+      dragOffsetY: 0,
+      autoTimer: 0,
+      autoAction: null,
+      speechTimer: 0,
+    };
+
+    const mousePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+    // DOM
+    const container = document.getElementById('pet-container');
+    const canvas = document.getElementById('pet-canvas');
+    const ctx = canvas.getContext('2d');
+    const offscreen = document.createElement('canvas');
+    offscreen.width = FW; offscreen.height = FH;
+    const offCtx = offscreen.getContext('2d');
+    const stateLabel = document.getElementById('state-label');
+    const speechBubble = document.getElementById('speech-bubble');
+
+    // Track mouse
+    document.addEventListener('mousemove', e => {
+      mousePos.x = e.clientX;
+      mousePos.y = e.clientY;
+    });
+
+    // Touch support
+    document.addEventListener('touchmove', e => {
+      if (e.touches.length > 0) {
+        mousePos.x = e.touches[0].clientX;
+        mousePos.y = e.touches[0].clientY;
+      }
+    });
+
+    // Drag
+    container.addEventListener('mousedown', startDrag);
+    container.addEventListener('touchstart', e => {
+      e.preventDefault();
+      startDrag(e.touches[0]);
+    });
+    document.addEventListener('mousemove', moveDrag);
+    document.addEventListener('touchmove', e => moveDrag(e.touches[0]));
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchend', endDrag);
+
+    // Click for random action
+    container.addEventListener('click', e => {
+      if (pet.dragging) return;
+      const actions = ['happy', 'play'];
+      const action = actions[Math.floor(Math.random() * actions.length)];
+      setState(action);
+      showSpeech(action === 'happy' ? getRandomMsg('happy') : getRandomMsg('play'));
+    });
+
+    function startDrag(e) {
+      pet.dragging = true;
+      pet.dragOffsetX = e.clientX - pet.x;
+      pet.dragOffsetY = e.clientY - pet.y;
+      setState('idle'); // will show pick-like behavior via drag
+      container.classList.add('dragging');
+    }
+
+    function moveDrag(e) {
+      if (!pet.dragging) return;
+      pet.x = e.clientX - pet.dragOffsetX;
+      pet.y = e.clientY - pet.dragOffsetY;
+    }
+
+    function endDrag() {
+      if (!pet.dragging) return;
+      pet.dragging = false;
+      container.classList.remove('dragging');
+      setState('idle');
+    }
+
+    // Speech bubbles
+    const MESSAGES = {
+      idle: ['...zzZ', 'Hmm~', '*yawn*'],
+      walk: ['Coming!', 'Wait for me!', 'On my way~'],
+      happy: ['Yay!', 'So happy!', 'Wheee~', 'Love you!'],
+      play: ['Let\'s play!', 'Fun time!', 'Woohoo!'],
+      work: ['Focus time!', 'Working hard~', 'Don\'t disturb me~'],
+      peek: ['Where am I?', 'Peek-a-boo!', 'Can you find me?'],
+    };
+
+    function getRandomMsg(state) {
+      const msgs = MESSAGES[state] || MESSAGES.idle;
+      return msgs[Math.floor(Math.random() * msgs.length)];
+    }
+
+    function showSpeech(text) {
+      speechBubble.textContent = text;
+      speechBubble.classList.add('visible');
+      pet.speechTimer = 180; // ~3 seconds at 60fps
+    }
+
+    function setState(newState) {
+      if (pet.state === newState) return;
+      pet.state = newState;
+      pet.frame = 0;
+      pet.tickCount = 0;
+      const labels = {
+        idle: 'Idle', walk: 'Walking', happy: 'Happy!',
+        play: 'Playing!', work: 'Working', peek: 'Peek-a-boo',
+      };
+      stateLabel.textContent = labels[newState] || newState;
+    }
+
+    // Auto behavior schedule
+    function scheduleAutoAction() {
+      // Random interval 4-10 seconds (240-600 frames at 60fps)
+      pet.autoTimer = 240 + Math.floor(Math.random() * 360);
+      const actions = ['happy', 'play', 'work', 'peek'];
+      pet.autoAction = actions[Math.floor(Math.random() * actions.length)];
+    }
+    scheduleAutoAction();
+
+    // === Main Loop ===
+    function update() {
+      if (pet.dragging) {
+        // During drag, no auto behavior
+      } else if (pet.state === 'happy' || pet.state === 'play' || pet.state === 'peek') {
+        // Playing a one-shot or timed animation
+        // Let it finish, then go back to idle
+        const anim = ANIMS[pet.state];
+        if (!anim.loop && pet.frame >= anim.frames - 1) {
+          setState('idle');
+          scheduleAutoAction();
+        }
+        // Peek: run for ~4 seconds then stop
+        if (pet.state === 'peek') {
+          pet.autoTimer--;
+          if (pet.autoTimer <= 0) {
+            setState('idle');
+            scheduleAutoAction();
+          }
+        }
+      } else if (pet.state === 'work') {
+        // Work for ~6 seconds, then back to idle
+        pet.autoTimer--;
+        if (pet.autoTimer <= 0) {
+          setState('idle');
+          showSpeech('Break time!');
+          scheduleAutoAction();
+        }
+      } else {
+        // Idle or Walk: follow mouse
+        const cx = pet.x + PET_SIZE / 2;
+        const cy = pet.y + PET_SIZE / 2;
+        const dx = mousePos.x - cx;
+        const dy = mousePos.y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > FOLLOW_DIST) {
+          // Walk toward mouse
+          const nx = dx / dist;
+          const ny = dy / dist;
+          pet.x += nx * SPEED;
+          pet.y += ny * SPEED;
+          pet.flipX = dx < 0;
+          if (pet.state !== 'walk') setState('walk');
+        } else {
+          if (pet.state !== 'idle') setState('idle');
+          // Face mouse
+          pet.flipX = dx < 0;
+
+          // Auto actions during idle
+          pet.autoTimer--;
+          if (pet.autoTimer <= 0) {
+            const action = pet.autoAction;
+            setState(action);
+            showSpeech(getRandomMsg(action));
+            if (action === 'work') {
+              pet.autoTimer = 360; // 6 seconds
+            } else if (action === 'peek') {
+              pet.autoTimer = 240; // 4 seconds
+              // Move to edge of screen
+              pet.x = Math.random() > 0.5 ? -PET_SIZE / 3 : window.innerWidth - PET_SIZE * 2 / 3;
+            } else {
+              scheduleAutoAction();
+            }
+          }
+        }
+      }
+
+      // Keep in viewport bounds (loosely)
+      pet.x = Math.max(-PET_SIZE / 2, Math.min(window.innerWidth - PET_SIZE / 2, pet.x));
+      pet.y = Math.max(0, Math.min(window.innerHeight - PET_SIZE, pet.y));
+
+      // Speech timer
+      if (pet.speechTimer > 0) {
+        pet.speechTimer--;
+        if (pet.speechTimer <= 0) {
+          speechBubble.classList.remove('visible');
+        }
+      }
+    }
+
+    function render() {
+      const anim = ANIMS[pet.state];
+      const img = images[pet.state];
+      if (!img || !img.complete) return;
+
+      // Advance frame
+      pet.tickCount++;
+      if (pet.tickCount >= TICKS_PER_FRAME) {
+        pet.tickCount = 0;
+        if (anim.loop) {
+          pet.frame = (pet.frame + 1) % anim.frames;
+        } else {
+          if (pet.frame < anim.frames - 1) pet.frame++;
+        }
+      }
+
+      const col = pet.frame % anim.cols;
+      const row = Math.floor(pet.frame / anim.cols);
+
+      // Draw to offscreen
+      offCtx.clearRect(0, 0, FW, FH);
+      if (pet.flipX) {
+        offCtx.save();
+        offCtx.scale(-1, 1);
+        offCtx.drawImage(img, col * FW, row * FH, FW, FH, -FW, 0, FW, FH);
+        offCtx.restore();
+      } else {
+        offCtx.drawImage(img, col * FW, row * FH, FW, FH, 0, 0, FW, FH);
+      }
+
+      // Remove black background
+      const imageData = offCtx.getImageData(0, 0, FW, FH);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] < BLACK_THRESHOLD && d[i+1] < BLACK_THRESHOLD && d[i+2] < BLACK_THRESHOLD) {
+          d[i+3] = 0;
+        }
+      }
+      offCtx.putImageData(imageData, 0, 0);
+
+      // Draw to visible canvas
+      ctx.clearRect(0, 0, 256, 256);
+      ctx.drawImage(offscreen, 0, 0);
+
+      // Position container
+      container.style.transform = `translate(${Math.round(pet.x)}px, ${Math.round(pet.y)}px)`;
+    }
+
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    // Start after images load
+    Promise.all(loadPromises).then(() => {
+      showSpeech('Hi there!');
+      loop();
+    });
+  </script>
 </body>
 </html>

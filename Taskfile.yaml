@@ -6,33 +6,10 @@ tasks:
     cmds:
       - go build -ldflags="-s -w" -o pawdock .
 
-  build:mac:
-    desc: Build for macOS (arm64)
-    cmds:
-      - GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o pawdock-darwin-arm64 .
-
-  build:mac-amd64:
-    desc: Build for macOS (amd64)
-    cmds:
-      - GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o pawdock-darwin-amd64 .
-
-  build:linux:
-    desc: Build for Linux (amd64)
-    cmds:
-      - CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o pawdock-linux-amd64 .
-
   build:windows:
-    desc: Build for Windows (amd64)
+    desc: Cross-compile for Windows (amd64)
     cmds:
       - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H windowsgui" -o pawdock-windows-amd64.exe .
-
-  build:all:
-    desc: Build for all platforms
-    cmds:
-      - task: build:mac
-      - task: build:mac-amd64
-      - task: build:linux
-      - task: build:windows
 
   release:
     desc: "Create a git tag from CHANGELOG.md. Usage: task release -- v0.2.0"

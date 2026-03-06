@@ -40,6 +40,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libc6-dev libgl1-mesa-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev libasound2-dev
       - name: Build
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -50,6 +51,7 @@ jobs:
           if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; LDFLAGS="$LDFLAGS -H windowsgui"; fi
           go build -ldflags="$LDFLAGS" -o ${{ matrix.name }}${EXT} .
       - name: Package
+        shell: bash
         run: |
           EXT=""
           if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi

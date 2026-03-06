@@ -218,6 +218,8 @@ type deskpet struct {
 	bubble            Bubble
 	iconWork          *ebiten.Image
 	iconStop          *ebiten.Image
+	iconQuit          *ebiten.Image
+	showQuitConfirm   bool
 	audioContext      *audio.Context
 	notifyPCM         []byte // decoded PCM for notification sound
 }
@@ -492,6 +494,18 @@ func (d *deskpet) Update() error {
 		d.dragWinX = wx
 		d.dragWinY = wy
 
+		// Check quit confirm click first
+		if d.showQuitConfirm {
+			if btn := d.quitConfirmHitTest(mx, my); btn >= 0 {
+				if btn == 0 { // Yes
+					os.Exit(0)
+				}
+				d.showQuitConfirm = false // No
+			}
+			d.menuConsumed = true
+			return nil
+		}
+
 		// Check menu click first
 		d.menuConsumed = false
 		if d.showMenu {
@@ -531,6 +545,9 @@ func (d *deskpet) Update() error {
 					} else {
 						d.stopWorkMode()
 					}
+				case 5: // Quit
+					d.showMenu = false
+					d.showQuitConfirm = true
 				}
 				d.menuConsumed = true
 				return nil
@@ -699,7 +716,7 @@ stateUpdate:
 }
 
 // Menu layout
-var menuLabels = []string{"Happy", "Play", "Peekaboo", "Follow", "Work"}
+var menuLabels = []string{"Happy", "Play", "Peekaboo", "Follow", "Work", "Quit"}
 
 // Warm gradient button colors
 var menuColors = []color.RGBA{
@@ -708,6 +725,7 @@ var menuColors = []color.RGBA{
 	{200, 160, 210, 230}, // soft purple
 	{225, 170, 145, 230}, // muted peach
 	{240, 140, 100, 230}, // warm orange (work)
+	{180, 100, 100, 230}, // muted red (quit)
 }
 var menuHoverColors = []color.RGBA{
 	{245, 170, 140, 250},
@@ -715,6 +733,7 @@ var menuHoverColors = []color.RGBA{
 	{220, 180, 230, 250},
 	{235, 190, 165, 250},
 	{250, 160, 120, 250}, // warm orange hover
+	{210, 120, 120, 250}, // muted red hover
 }
 
 const (
@@ -789,6 +808,8 @@ func (d *deskpet) drawMenu(screen *ebiten.Image) {
 			} else {
 				icon = d.iconWork
 			}
+		case 5:
+			icon = d.iconQuit
 		}
 		if icon != nil {
 			iop := &ebiten.DrawImageOptions{}
@@ -832,6 +853,83 @@ func (d *deskpet) drawMenu(screen *ebiten.Image) {
 			top.ColorScale.ScaleWithColor(color.White)
 			text.Draw(screen, label, face, top)
 		}
+	}
+}
+
+// Quit confirm dialog
+const (
+	quitDialogW = 90
+	quitDialogH = 40
+	quitBtnW    = 30
+	quitBtnH    = 14
+)
+
+func (d *deskpet) quitConfirmPos() (dx, dy int) {
+	lw, lh := d.Layout(0, 0)
+	return (lw - quitDialogW) / 2, (lh - quitDialogH) / 2
+}
+
+func (d *deskpet) quitConfirmHitTest(mx, my int) int {
+	dx, dy := d.quitConfirmPos()
+	btnY := dy + 22
+	// Yes button
+	yesX := dx + quitDialogW/2 - quitBtnW - 4
+	if mx >= yesX && mx <= yesX+quitBtnW && my >= btnY && my <= btnY+quitBtnH {
+		return 0
+	}
+	// No button
+	noX := dx + quitDialogW/2 + 4
+	if mx >= noX && mx <= noX+quitBtnW && my >= btnY && my <= btnY+quitBtnH {
+		return 1
+	}
+	return -1
+}
+
+func (d *deskpet) drawQuitConfirm(screen *ebiten.Image) {
+	dx, dy := d.quitConfirmPos()
+	face := text.NewGoXFace(bitmapfont.Face)
+	mx, my := ebiten.CursorPosition()
+
+	// Dialog background
+	vector.DrawFilledRect(screen, float32(dx), float32(dy), quitDialogW, quitDialogH,
+		color.RGBA{40, 40, 40, 230}, false)
+	vector.StrokeRect(screen, float32(dx), float32(dy), quitDialogW, quitDialogH,
+		1, color.RGBA{180, 180, 180, 200}, false)
+
+	// Title
+	tw, _ := text.Measure("Quit?", face, 0)
+	top := &text.DrawOptions{}
+	top.GeoM.Translate(float64(dx)+(quitDialogW-tw)/2, float64(dy)+4)
+	top.ColorScale.ScaleWithColor(color.White)
+	text.Draw(screen, "Quit?", face, top)
+
+	// Buttons
+	btnY := dy + 22
+	yesX := dx + quitDialogW/2 - quitBtnW - 4
+	noX := dx + quitDialogW/2 + 4
+
+	for i, label := range []string{"Yes", "No"} {
+		bx := yesX
+		if i == 1 {
+			bx = noX
+		}
+		hovered := mx >= bx && mx <= bx+quitBtnW && my >= btnY && my <= btnY+quitBtnH
+		btnColor := color.RGBA{180, 100, 100, 230}
+		if i == 1 {
+			btnColor = color.RGBA{100, 140, 100, 230}
+		}
+		if hovered {
+			btnColor.R = min(btnColor.R+30, 255)
+			btnColor.G = min(btnColor.G+30, 255)
+			btnColor.B = min(btnColor.B+30, 255)
+		}
+		vector.DrawFilledRect(screen, float32(bx), float32(btnY), quitBtnW, quitBtnH, btnColor, false)
+
+		lw, _ := text.Measure(label, face, 0)
+		lt := &text.DrawOptions{}
+		lt.GeoM.Translate(float64(bx)+(quitBtnW-lw)/2, float64(btnY)+2)
+		lt.ColorScale.ScaleWithColor(color.White)
+		text.Draw(screen, label, face, lt)
 	}
 }
 
@@ -1029,6 +1127,10 @@ func (d *deskpet) Draw(screen *ebiten.Image) {
 		d.drawMenu(screen)
 	}
 
+	if d.showQuitConfirm {
+		d.drawQuitConfirm(screen)
+	}
+
 	d.drawBubble(screen)
 	d.drawTimerBadge(screen)
 }
@@ -1079,6 +1181,7 @@ func main() {
 		iconPeekaboo: loadImage("material/icon_peekaboo.png"),
 		iconWork:     loadImage("material/icon_work.png"),
 		iconStop:     loadImage("material/icon_stop.png"),
+		iconQuit:     loadImage("material/icon_quit.png"),
 		audioContext: audioCtx,
 		notifyPCM:    notifyPCM,
 	}

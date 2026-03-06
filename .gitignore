@@ -1,0 +1,19 @@
+# Binaries
+deskpet
+deskpet.exe
+*.exe
+
+archive
+
+# OS files
+.DS_Store
+
+# Video sources
+assets/*.mp4
+
+# Large sprite sheets (generated from videos)
+assets/*_spritesheet.png
+
+# IDE
+.idea/
+.vscode/

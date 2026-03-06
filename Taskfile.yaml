@@ -33,3 +33,18 @@ tasks:
       - task: build:mac-amd64
       - task: build:linux
       - task: build:windows
+
+  release:
+    desc: "Create a git tag from CHANGELOG.md. Usage: task release -- v0.2.0"
+    cmds:
+      - |
+        VERSION="{{.CLI_ARGS}}"
+        if [ -z "$VERSION" ]; then echo "Usage: task release -- v0.2.0"; exit 1; fi
+        NOTES=$(awk "/^## $VERSION/{found=1; next} /^## /{found=0} found" CHANGELOG.md)
+        if [ -z "$NOTES" ]; then echo "Error: no entry for $VERSION in CHANGELOG.md"; exit 1; fi
+        echo "=== Tag $VERSION ==="
+        echo "$NOTES"
+        echo "===================="
+        git tag -a "$VERSION" -m "$VERSION
+        $NOTES"
+        echo "Tag $VERSION created. Push with: git push origin $VERSION"

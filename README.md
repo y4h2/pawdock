@@ -22,11 +22,24 @@ Grab the latest release from the [Releases](https://github.com/y4h2/pawdock/rele
 
 ### Build from Source
 
-```bash
-go run .
-```
+Requires Go 1.23+, CGO enabled, and [Task](https://taskfile.dev/) (optional).
 
-Requires Go 1.23+ and CGO enabled (for Ebitengine).
+```bash
+# Run directly
+go run .
+
+# Build for current platform
+task build
+
+# Build for specific platform
+task build:mac          # macOS arm64
+task build:mac-amd64    # macOS amd64
+task build:linux        # Linux amd64
+task build:windows      # Windows amd64 (requires mingw)
+
+# Build all platforms
+task build:all
+```
 
 ## Configuration
 
@@ -62,6 +75,15 @@ CyclesBeforeLong = 4   # Cycles before long break
 - [Go](https://go.dev/)
 - [Ebitengine](https://ebitengine.org/) - 2D game engine
 - Sprite sheet animations (256x256, 9 columns, 12fps)
+
+## Release
+
+1. Update `CHANGELOG.md` with the new version entry
+2. Commit changes
+3. Create tag: `task release -- v0.x.0`
+4. Push: `git push origin main && git push origin v0.x.0`
+
+The tag message is auto-extracted from CHANGELOG.md. GitHub Actions will build and publish releases on tag push.
 
 ## License
 

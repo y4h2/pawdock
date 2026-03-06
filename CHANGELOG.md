@@ -12,5 +12,6 @@
 - Pomodoro work mode: 25min focus → 5min break → 4 cycles → 15min long break
 - Timer countdown display with speech bubbles
 - Sound notification on focus end
+- Quit button with confirmation dialog
 - Configurable via deskpet.ini (speed, scale, durations)
 - Cross-platform build (macOS, Linux, Windows)

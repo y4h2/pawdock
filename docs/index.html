@@ -63,7 +63,47 @@
       max-width: 500px;
     }
 
-    /* Pet hint */
+    /* Mascot static */
+    .mascot {
+      width: 280px;
+      height: 280px;
+      margin: 16px 0;
+    }
+    .mascot img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    /* Try button */
+    .try-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 32px;
+      border-radius: 100px;
+      background: linear-gradient(90deg, #F59E0B, #F97316);
+      color: #FFFFFF;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
+      transition: transform 0.2s, box-shadow 0.2s;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .try-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(245, 158, 11, 0.4);
+    }
+    .try-btn svg { width: 18px; height: 18px; }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3); }
+      50% { box-shadow: 0 4px 28px rgba(245, 158, 11, 0.5); }
+    }
+
+    /* Pet hint (shown after try) */
     .pet-hint {
       margin-top: 12px;
       padding: 10px 24px;
@@ -74,8 +114,10 @@
       color: #8B5CF6;
       font-weight: 500;
       text-align: center;
-      animation: fadeInHint 1s ease-out;
+      display: none;
+      animation: fadeInHint 0.5s ease-out;
     }
+    .pet-hint.visible { display: block; }
     @keyframes fadeInHint {
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
@@ -234,16 +276,20 @@
     /* Free-roaming pet */
     #pet-container {
       position: fixed;
+      top: 0;
+      left: 0;
       z-index: 9999;
       pointer-events: none;
-      width: 128px;
-      height: 128px;
+      width: 280px;
+      height: 280px;
+      display: none;
     }
+    #pet-container.active { display: block; }
     #pet-container.draggable { pointer-events: auto; cursor: grab; }
     #pet-container.dragging { cursor: grabbing; }
     #pet-canvas {
-      width: 128px;
-      height: 128px;
+      width: 280px;
+      height: 280px;
       image-rendering: auto;
     }
 
@@ -301,7 +347,7 @@
       .feature-card { width: 140px; padding: 16px; }
       .quote-section { padding: 0 20px; }
       .btn { padding: 12px 24px; font-size: 14px; }
-      #pet-container, #pet-canvas { width: 96px; height: 96px; }
+      #pet-container, #pet-canvas { width: 200px; height: 200px; }
     }
   </style>
 </head>
@@ -320,8 +366,18 @@
     <h1 class="title">Pawdock</h1>
     <p class="subtitle">A Cute Little Friend That Lives on Your Desktop</p>
 
-    <div class="pet-hint">
-      Move your mouse around — your pet will follow! Try clicking on it too.
+    <!-- Mascot (static) -->
+    <div class="mascot" id="mascot-static">
+      <img src="idle.png" alt="Pawdock pet character">
+    </div>
+
+    <button class="try-btn" id="try-btn" onclick="startPet()">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+      Try It Live
+    </button>
+
+    <div class="pet-hint" id="pet-hint">
+      Move your mouse around — your pet will follow! Click on it for surprises.
     </div>
 
     <!-- Features -->
@@ -411,7 +467,7 @@
     };
     const FW = 256, FH = 256;
     const BLACK_THRESHOLD = 30;
-    const PET_SIZE = 128;
+    const PET_SIZE = 280;
     const SPEED = 2.5;
     const FOLLOW_DIST = 120;
     const TICKS_PER_FRAME = 3;
@@ -428,8 +484,8 @@
 
     // === Pet State Machine ===
     const pet = {
-      x: window.innerWidth / 2 - PET_SIZE / 2,
-      y: window.innerHeight / 2 - PET_SIZE / 2,
+      x: 0,
+      y: 0,
       state: 'idle',
       frame: 0,
       tickCount: 0,
@@ -442,7 +498,8 @@
       speechTimer: 0,
     };
 
-    const mousePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    let mouseMovedOnce = false;
+    const mousePos = { x: 0, y: 0 };
 
     // DOM
     const container = document.getElementById('pet-container');
@@ -458,6 +515,7 @@
     document.addEventListener('mousemove', e => {
       mousePos.x = e.clientX;
       mousePos.y = e.clientY;
+      mouseMovedOnce = true;
     });
 
     // Touch support
@@ -465,6 +523,7 @@
       if (e.touches.length > 0) {
         mousePos.x = e.touches[0].clientX;
         mousePos.y = e.touches[0].clientY;
+        mouseMovedOnce = true;
       }
     });
 
@@ -580,46 +639,58 @@
           scheduleAutoAction();
         }
       } else {
-        // Idle or Walk: follow mouse
-        const cx = pet.x + PET_SIZE / 2;
-        const cy = pet.y + PET_SIZE / 2;
-        const dx = mousePos.x - cx;
-        const dy = mousePos.y - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        // Idle or Walk: follow mouse (only after user moves mouse)
+        if (mouseMovedOnce) {
+          const cx = pet.x + PET_SIZE / 2;
+          const cy = pet.y + PET_SIZE / 2;
+          const dx = mousePos.x - cx;
+          const dy = mousePos.y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist > FOLLOW_DIST) {
-          // Walk toward mouse
-          const nx = dx / dist;
-          const ny = dy / dist;
-          pet.x += nx * SPEED;
-          pet.y += ny * SPEED;
-          pet.flipX = dx < 0;
-          if (pet.state !== 'walk') setState('walk');
-        } else {
-          if (pet.state !== 'idle') setState('idle');
-          // Face mouse
-          pet.flipX = dx < 0;
+          if (dist > FOLLOW_DIST) {
+            // Walk toward mouse
+            const nx = dx / dist;
+            const ny = dy / dist;
+            pet.x += nx * SPEED;
+            pet.y += ny * SPEED;
+            pet.flipX = dx > 0;
+            if (pet.state !== 'walk') setState('walk');
+          } else {
+            if (pet.state !== 'idle') setState('idle');
+            // Face mouse
+            pet.flipX = dx > 0;
 
-          // Auto actions during idle
-          pet.autoTimer--;
-          if (pet.autoTimer <= 0) {
-            const action = pet.autoAction;
-            setState(action);
-            showSpeech(getRandomMsg(action));
-            if (action === 'work') {
-              pet.autoTimer = 360; // 6 seconds
-            } else if (action === 'peek') {
-              pet.autoTimer = 240; // 4 seconds
-              // Move to edge of screen
-              pet.x = Math.random() > 0.5 ? -PET_SIZE / 3 : window.innerWidth - PET_SIZE * 2 / 3;
-            } else {
-              scheduleAutoAction();
+            // Auto actions during idle
+            pet.autoTimer--;
+            if (pet.autoTimer <= 0) {
+              const action = pet.autoAction;
+              setState(action);
+              showSpeech(getRandomMsg(action));
+              if (action === 'work') {
+                pet.autoTimer = 360; // 6 seconds
+              } else if (action === 'peek') {
+                pet.autoTimer = 240; // 4 seconds
+              } else {
+                scheduleAutoAction();
+              }
             }
           }
         }
       }
 
-      // Keep in viewport bounds (loosely)
+      // Keep near center (leash radius)
+      const LEASH = 250;
+      const centerX = window.innerWidth / 2 - PET_SIZE / 2;
+      const centerY = window.innerHeight / 2 - PET_SIZE / 2;
+      const ldx = pet.x - centerX;
+      const ldy = pet.y - centerY;
+      const ldist = Math.sqrt(ldx * ldx + ldy * ldy);
+      if (ldist > LEASH) {
+        pet.x = centerX + (ldx / ldist) * LEASH;
+        pet.y = centerY + (ldy / ldist) * LEASH;
+      }
+
+      // Keep in viewport bounds
       pet.x = Math.max(-PET_SIZE / 2, Math.min(window.innerWidth - PET_SIZE / 2, pet.x));
       pet.y = Math.max(0, Math.min(window.innerHeight - PET_SIZE, pet.y));
 
@@ -686,11 +757,34 @@
       requestAnimationFrame(loop);
     }
 
-    // Start after images load
-    Promise.all(loadPromises).then(() => {
-      showSpeech('Hi there!');
-      loop();
-    });
+    let started = false;
+
+    function startPet() {
+      if (started) return;
+      started = true;
+
+      // Hide mascot image but keep space, hide button, show hint
+      document.getElementById('mascot-static').querySelector('img').style.visibility = 'hidden';
+      document.getElementById('try-btn').style.display = 'none';
+      document.getElementById('pet-hint').classList.add('visible');
+
+      // Position pet exactly at mascot image location
+      const mascotRect = document.getElementById('mascot-static').getBoundingClientRect();
+      pet.x = mascotRect.left;
+      pet.y = mascotRect.top;
+
+      // Reset mouse tracking so pet doesn't immediately chase
+      mouseMovedOnce = false;
+
+      // Show pet container and set initial position immediately
+      container.classList.add('active');
+      container.style.transform = `translate(${Math.round(pet.x)}px, ${Math.round(pet.y)}px)`;
+
+      Promise.all(loadPromises).then(() => {
+        showSpeech('Hi there!');
+        loop();
+      });
+    }
   </script>
 </body>
 </html>

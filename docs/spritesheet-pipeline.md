@@ -83,8 +83,8 @@ y_off = TARGET - nh
 
 | 文件 | 说明 |
 |------|------|
-| `asset_new/{name}_spritesheet.png` | 原始尺寸 sprite sheet（备份） |
-| `asset_new/{name}_spritesheet_meta.txt` | 元数据（帧数、尺寸、列数、fps） |
+| `assets/{name}_spritesheet.png` | 原始尺寸 sprite sheet（备份） |
+| `assets/{name}_spritesheet_meta.txt` | 元数据（帧数、尺寸、列数、fps） |
 | `material/{name}_sheet.png` | 256x256 归一化 sprite sheet（程序使用） |
 
 ## 当前素材参数
@@ -96,6 +96,7 @@ y_off = TARGET - nh
 | happy| 73   | 476x566   | 0.958      | 0.887        |
 | pick | 73   | 432x560   | 0.968      | 0.878        |
 | play | 121  | 454x606   | 0.894      | 0.950        |
+| bye  | 73   | 428x550   | 0.985      | 0.863        |
 
 ## 代码中加载方式
 
@@ -106,4 +107,5 @@ walk = loadSheetFrames("material/walk_sheet.png", 256, 256, 9, 73)
 happy = loadSheetFrames("material/happy_sheet.png", 256, 256, 9, 73)
 pick = loadSheetFrames("material/pick_sheet.png", 256, 256, 9, 73)
 play = loadSheetFrames("material/play_sheet.png", 256, 256, 9, 121)
+bye  = loadSheetFrames("material/bye_sheet.png", 256, 256, 9, 73)
 ```

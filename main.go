@@ -172,6 +172,7 @@ const (
 	StateHide  // peekaboo: hiding animation
 	StatePeek  // peekaboo: peeking from screen edge
 	StateFound // peekaboo: found by user
+	StateBye   // bye animation before quit
 )
 
 // deskpet implements the ebiten.Game interface.
@@ -205,6 +206,7 @@ type deskpet struct {
 	peekTopFrames   []*ebiten.Image // upper half: for peeking from top edge
 	peekBottomFrames []*ebiten.Image // lower half: for peeking from bottom edge
 	foundFrames     []*ebiten.Image
+	byeFrames       []*ebiten.Image
 	peekEdge    int  // 0=left, 1=right, 2=top, 3=bottom
 	peekCount   int  // number of times peeked (found after 3)
 	savedX      int  // saved position before peekaboo
@@ -271,7 +273,7 @@ func cropFramesHalf(frames []*ebiten.Image, top bool) []*ebiten.Image {
 	return result
 }
 
-func loadSprites() (idle, walk, happy, pick, play, work, hide, peek, peekTop, peekBottom, found []*ebiten.Image) {
+func loadSprites() (idle, walk, happy, pick, play, work, hide, peek, peekTop, peekBottom, found, bye []*ebiten.Image) {
 	idle = loadSheetFrames("material/idle_sheet.png", 256, 256, 9, 121)
 	walk = loadSheetFrames("material/walk_sheet.png", 256, 256, 9, 73)
 	happy = loadSheetFrames("material/happy_sheet.png", 256, 256, 9, 73)
@@ -281,6 +283,7 @@ func loadSprites() (idle, walk, happy, pick, play, work, hide, peek, peekTop, pe
 	hide = loadSheetFrames("material/hide_sheet.png", 256, 256, 9, 73)
 	peek = loadSheetFrames("material/peek_sheet.png", 256, 256, 9, 73)
 	found = loadSheetFrames("material/found_sheet.png", 256, 256, 9, 73)
+	bye = loadSheetFrames("material/bye_sheet.png", 256, 256, 9, 73)
 	peekTop = cropFramesHalf(peek, true)       // head part: show when peeking from top
 	peekBottom = cropFramesHalf(peek, false)    // feet part: show when peeking from bottom
 	return
@@ -455,9 +458,28 @@ func (d *deskpet) drawTimerBadge(screen *ebiten.Image) {
 }
 
 func (d *deskpet) Update() error {
-	// Press Escape to quit
+	// Press Escape to quit (with bye animation)
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		return ebiten.Termination
+		if d.state != StateBye {
+			d.state = StateBye
+			d.frameIndex = 0
+			d.frameCount = 0
+			d.showMenu = false
+			d.showQuitConfirm = false
+		}
+	}
+
+	// During bye animation, only advance frames then exit
+	if d.state == StateBye {
+		d.frameCount++
+		if d.frameCount >= 2 {
+			d.frameCount = 0
+			d.frameIndex++
+			if d.frameIndex >= len(d.byeFrames) {
+				return ebiten.Termination
+			}
+		}
+		return nil
 	}
 
 	// Update bubble and work mode timer
@@ -497,8 +519,13 @@ func (d *deskpet) Update() error {
 		// Check quit confirm click first
 		if d.showQuitConfirm {
 			if btn := d.quitConfirmHitTest(mx, my); btn >= 0 {
-				if btn == 0 { // Yes
-					os.Exit(0)
+				if btn == 0 { // Yes — play bye animation then exit
+					d.state = StateBye
+					d.frameIndex = 0
+					d.frameCount = 0
+					d.showMenu = false
+					d.showQuitConfirm = false
+					return nil
 				}
 				d.showQuitConfirm = false // No
 			}
@@ -1093,6 +1120,8 @@ func (d *deskpet) Draw(screen *ebiten.Image) {
 		frames = d.peekFrames
 	case StateFound:
 		frames = d.foundFrames
+	case StateBye:
+		frames = d.byeFrames
 	default:
 		frames = d.idleFrames
 	}
@@ -1142,11 +1171,11 @@ func (d *deskpet) Layout(outsideWidth, outsideHeight int) (int, int) {
 func main() {
 	cfg := loadConfig("deskpet.ini")
 
-	idleFrames, walkFrames, happyFrames, pickFrames, playFrames, workFrames, hideFrames, peekFrames, peekTopFrames, peekBottomFrames, foundFrames := loadSprites()
+	idleFrames, walkFrames, happyFrames, pickFrames, playFrames, workFrames, hideFrames, peekFrames, peekTopFrames, peekBottomFrames, foundFrames, byeFrames := loadSprites()
 
-	fmt.Printf("Loaded: %d idle + %d walk + %d happy + %d pick + %d play + %d work + %d hide + %d peek + %d found frames\n",
+	fmt.Printf("Loaded: %d idle + %d walk + %d happy + %d pick + %d play + %d work + %d hide + %d peek + %d found + %d bye frames\n",
 		len(idleFrames), len(walkFrames), len(happyFrames), len(pickFrames), len(playFrames),
-		len(workFrames), len(hideFrames), len(peekFrames), len(foundFrames))
+		len(workFrames), len(hideFrames), len(peekFrames), len(foundFrames), len(byeFrames))
 	fmt.Printf("Config: Speed=%d, Scale=%.1f, Focus=%dmin, Break=%d/%dmin, Cycles=%d\n",
 		cfg.Speed, cfg.Scale, cfg.FocusDuration, cfg.ShortBreak, cfg.LongBreak, cfg.CyclesBeforeLong)
 
@@ -1172,6 +1201,7 @@ func main() {
 		peekTopFrames:    peekTopFrames,
 		peekBottomFrames: peekBottomFrames,
 		foundFrames:      foundFrames,
+		byeFrames:        byeFrames,
 		cfg:          cfg,
 		following:    true,
 		iconHappy:    loadImage("material/icon_happy.png"),

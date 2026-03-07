@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-ASSET_DIR = PROJECT_ROOT / "asset_new"
+ASSET_DIR = PROJECT_ROOT / "assets"
 MATERIAL_DIR = PROJECT_ROOT / "material"
 
 TARGET = 256

@@ -497,9 +497,10 @@
     <h1 class="title">Your desk doesn't have to be lonely.</h1>
     <p class="subtitle">A tiny desktop companion that follows your cursor, plays with you, and keeps you focused.</p>
 
-    <!-- Mascot (static) -->
+    <!-- Mascot (animated idle, static fallback) -->
     <div class="mascot" id="mascot-static">
-      <img src="idle.png" alt="Pawdock pet character">
+      <img src="idle.png" alt="Pawdock pet character" id="mascot-fallback">
+      <canvas id="mascot-canvas" width="256" height="256" style="display:none; width:280px; height:280px;"></canvas>
     </div>
 
     <button class="try-btn" id="try-btn" onclick="startPet()">
@@ -607,7 +608,7 @@
           View on GitHub
         </a>
       </div>
-      <p class="micro">Go + Ebitengine. Lightweight. No Electron. No subscriptions. Ever.</p>
+      <p class="micro">Lightweight. No Electron. No subscriptions. Just vibes.</p>
     </div>
 
   </div>
@@ -921,14 +922,68 @@
       requestAnimationFrame(loop);
     }
 
+    // === Hero idle animation ===
+    const mascotCanvas = document.getElementById('mascot-canvas');
+    const mascotCtx = mascotCanvas.getContext('2d');
+    const mascotOff = document.createElement('canvas');
+    mascotOff.width = FW; mascotOff.height = FH;
+    const mascotOffCtx = mascotOff.getContext('2d');
+    let mascotFrame = 0;
+    let mascotTick = 0;
+    let mascotRunning = true;
+
+    const idleImg = images['idle'];
+    const idleAnim = ANIMS['idle'];
+
+    function mascotLoop() {
+      if (!mascotRunning) return;
+      mascotTick++;
+      if (mascotTick >= TICKS_PER_FRAME) {
+        mascotTick = 0;
+        mascotFrame = (mascotFrame + 1) % idleAnim.frames;
+      }
+      const col = mascotFrame % idleAnim.cols;
+      const row = Math.floor(mascotFrame / idleAnim.cols);
+
+      mascotOffCtx.clearRect(0, 0, FW, FH);
+      mascotOffCtx.drawImage(idleImg, col * FW, row * FH, FW, FH, 0, 0, FW, FH);
+
+      const imageData = mascotOffCtx.getImageData(0, 0, FW, FH);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] < BLACK_THRESHOLD && d[i+1] < BLACK_THRESHOLD && d[i+2] < BLACK_THRESHOLD) {
+          d[i+3] = 0;
+        }
+      }
+      mascotOffCtx.putImageData(imageData, 0, 0);
+
+      mascotCtx.clearRect(0, 0, 256, 256);
+      mascotCtx.drawImage(mascotOff, 0, 0);
+      requestAnimationFrame(mascotLoop);
+    }
+
+    // Start hero animation once idle sheet loads
+    idleImg.addEventListener('load', function onIdleLoad() {
+      document.getElementById('mascot-fallback').style.display = 'none';
+      mascotCanvas.style.display = 'block';
+      mascotLoop();
+    });
+    if (idleImg.complete) {
+      document.getElementById('mascot-fallback').style.display = 'none';
+      mascotCanvas.style.display = 'block';
+      mascotLoop();
+    }
+
     let started = false;
 
     function startPet() {
       if (started) return;
       started = true;
 
-      // Hide mascot image but keep space, hide button, show hints
-      document.getElementById('mascot-static').querySelector('img').style.visibility = 'hidden';
+      // Stop hero idle animation, hide mascot, show hints
+      mascotRunning = false;
+      mascotCanvas.style.display = 'none';
+      document.getElementById('mascot-fallback').style.display = 'none';
       document.getElementById('try-btn').style.display = 'none';
       document.getElementById('hero-cta').style.display = 'none';
       document.getElementById('interact-section').classList.add('visible');
